@@ -160,7 +160,7 @@ def find_valid_phone():
             elif "good" in check_log:
                 print(colorama.Fore.GREEN + check_log['good'] + colorama.Style.RESET_ALL)
 
-            if not check_clsm_used['used'] and "good" in check_uptime:
+            if not check_clsm_used['used'] and "good" in check_uptime and "good" in check_log:
                 try:
                     with open("./cloudsigma_sms/phone_saved.txt", "a") as file:
                         file.write(f"+{check_clsm_used['phone_number']}\n")
