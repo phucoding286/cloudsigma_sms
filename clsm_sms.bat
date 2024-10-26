@@ -1,0 +1,1 @@
+python ./cloudsigma_sms/cloudsigma_sms.py
