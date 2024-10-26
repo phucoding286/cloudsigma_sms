@@ -126,9 +126,9 @@ def check_phone_log(phone_number):
     with open("./cloudsigma_sms/phone_log.txt", "r") as file:
         ds_sdt_log = file.read().splitlines()
     if f"+{phone_number}" in ds_sdt_log:
-        return {"na": f"sdt -> {phone_number} đã tồn tại trong log"}
+        return {"na": f"sdt -> +{phone_number} đã tồn tại trong log"}
     else:
-        return {"good": f"sdt -> {phone_number} chưa tồn tại trong log"}
+        return {"good": f"sdt -> +{phone_number} chưa tồn tại trong log"}
 
 
 
