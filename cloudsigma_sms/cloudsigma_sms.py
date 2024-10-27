@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import colorama
 import time
+import threading
 colorama.init()
 
 
@@ -132,45 +133,66 @@ def check_phone_log(phone_number):
 
 
 
+def find(nt=20):
+    def _thread():
+        check_clsm_used = check_cloudsigma_used()
+
+        if "error" in check_clsm_used:
+            print(colorama.Fore.RED + check_clsm_used['error'] + colorama.Style.RESET_ALL)
+            return 0
+        elif check_clsm_used['used']:
+            print(colorama.Fore.RED + check_clsm_used['message'] + colorama.Style.RESET_ALL)
+        elif not check_clsm_used['used']:
+            print(colorama.Fore.GREEN + check_clsm_used['message'] + colorama.Style.RESET_ALL)
+
+        check_uptime = check_uptime_of_phone(check_clsm_used['phone_number'], min_month=1)
+
+        if "na" in check_uptime:
+            print(colorama.Fore.RED + check_uptime['na'] + colorama.Style.RESET_ALL)
+        elif "good" in check_uptime:
+            print(colorama.Fore.GREEN + check_uptime['message'] + colorama.Style.RESET_ALL)
+
+        check_log = check_phone_log(check_clsm_used['phone_number'])
+
+        if "na" in check_log:
+            print(colorama.Fore.RED + check_log['na'] + colorama.Style.RESET_ALL)
+        elif "good" in check_log:
+            print(colorama.Fore.GREEN + check_log['good'] + colorama.Style.RESET_ALL)
+
+        if not check_clsm_used['used'] and "good" in check_uptime and "good" in check_log:
+            try:
+                with open("./cloudsigma_sms/phone_saved.txt", "a") as file:
+                    file.write(f"+{check_clsm_used['phone_number']}\n")
+                    print(colorama.Fore.GREEN + f"đã lưu thành công số -> {check_clsm_used['phone_number']}" + colorama.Style.RESET_ALL)
+                with open("./cloudsigma_sms/phone_log.txt", "a") as file:
+                    file.write(f"+{check_clsm_used['phone_number']}\n")
+                    print(colorama.Fore.GREEN + f"đã lưu thành công số -> {check_clsm_used['phone_number']} vào log" + colorama.Style.RESET_ALL)
+            except:
+                print(colorama.Fore.RED + "đã có lỗi khi lưu sdt hơp lệ" + colorama.Style.RESET_ALL)
+    
+    threads = []
+    for _ in range(nt):
+        thread = threading.Thread(target=_thread)
+        threads.append(thread)
+        thread.start()
+        time.sleep(0.5)
+    for thread in threads:
+        thread.join()
+
+
 def find_valid_phone():
+    while True:
+        nt_input = input(colorama.Fore.YELLOW + "[?] nhập số luồng\n-> " + colorama.Style.RESET_ALL)
+        try:
+            nt_input = int(nt_input)
+            break
+        except:
+            nt_input = input(colorama.Fore.YELLOW + "[!] vui lòng nhập 'số' luồng" + colorama.Style.RESET_ALL)
+
     print(colorama.Fore.YELLOW + "[!] Dùng CTRL + C nếu muốn thoát khỏi chương trình smsonl" + colorama.Style.RESET_ALL)
     while True:
         try:
-            check_clsm_used = check_cloudsigma_used()
-
-            if "error" in check_clsm_used:
-                print(colorama.Fore.RED + check_clsm_used['error'] + colorama.Style.RESET_ALL)
-                continue
-            elif check_clsm_used['used']:
-                print(colorama.Fore.RED + check_clsm_used['message'] + colorama.Style.RESET_ALL)
-            elif not check_clsm_used['used']:
-                print(colorama.Fore.GREEN + check_clsm_used['message'] + colorama.Style.RESET_ALL)
-
-            check_uptime = check_uptime_of_phone(check_clsm_used['phone_number'], min_month=1)
-
-            if "na" in check_uptime:
-                print(colorama.Fore.RED + check_uptime['na'] + colorama.Style.RESET_ALL)
-            elif "good" in check_uptime:
-                print(colorama.Fore.GREEN + check_uptime['message'] + colorama.Style.RESET_ALL)
-
-            check_log = check_phone_log(check_clsm_used['phone_number'])
-
-            if "na" in check_log:
-                print(colorama.Fore.RED + check_log['na'] + colorama.Style.RESET_ALL)
-            elif "good" in check_log:
-                print(colorama.Fore.GREEN + check_log['good'] + colorama.Style.RESET_ALL)
-
-            if not check_clsm_used['used'] and "good" in check_uptime and "good" in check_log:
-                try:
-                    with open("./cloudsigma_sms/phone_saved.txt", "a") as file:
-                        file.write(f"+{check_clsm_used['phone_number']}\n")
-                        print(colorama.Fore.GREEN + f"đã lưu thành công số -> {check_clsm_used['phone_number']}" + colorama.Style.RESET_ALL)
-                    with open("./cloudsigma_sms/phone_log.txt", "a") as file:
-                        file.write(f"+{check_clsm_used['phone_number']}\n")
-                        print(colorama.Fore.GREEN + f"đã lưu thành công số -> {check_clsm_used['phone_number']} vào log" + colorama.Style.RESET_ALL)
-                except:
-                    print(colorama.Fore.RED + "đã có lỗi khi lưu sdt hơp lệ" + colorama.Style.RESET_ALL)
-
+            find(nt_input)
         except Exception as e:
             print(colorama.Fore.RED + f"đã có lỗi không xác định, mã lỗi {e}" + colorama.Style.RESET_ALL)
         except KeyboardInterrupt:
