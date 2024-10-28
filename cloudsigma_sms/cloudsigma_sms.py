@@ -9,35 +9,71 @@ import threading
 colorama.init()
 
 
+# global params
 ua = {"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0"}
 list_sum_of_phone = []
+phone_number = None
+max_times_for_storage_hist = 100
+count_times_for_storage_hist = 1
 
 
-
+# get and storage phones in global var and local file for history restore
 def get_phone_number(hist_num_path="./cloudsigma_sms/phone_hist.txt"):
     global list_sum_of_phone
-
+    global phone_number
+    global count_times_for_storage_hist
+    
+    # if phone hist file path is inexists it'll create new path
     if not os.path.exists(hist_num_path):
         with open(hist_num_path, "a"): pass
-    else:
+    # if global var 'phone number' is None it'll restore from the restore file 'phone_hist.txt'
+    elif phone_number is None:
         hist_phone = open(hist_num_path, "r")
         phone_number = hist_phone.read()
+        # get infomation from smsonl server
         r = requests.get(f"https://receive-smss.com/sms/{phone_number}/", headers=ua)
         hist_phone.close()
-
+    # if global var 'phone number' is not None, it'll get random from list number phones geted previous
+    elif phone_number is not None:
+        # loop for skip error and only get phones working
+        while True:
+            phone_number = random.choice(list_sum_of_phone)
+            r = requests.get(f"https://receive-smss.com/sms/{phone_number}/", headers=ua)
+            if r.status_code != 404:
+                break
+            else:
+                continue
+    
+    # get list number phones from result infomation of api
     list_random_phone = r.text.split("numberst = ")[1].split(";")[0].replace('[', '').replace(']', '').replace('"', '').replace('+', "").split(',')
+    # add new number phones in list sum of phone numbers
     for phone in list_random_phone: list_sum_of_phone.append(phone) if phone not in list_sum_of_phone else 0
     
-    with open(hist_num_path, "w") as file:
-        file.write(random.choice(list_sum_of_phone))
+    # only write new phones number in hist with limit times count (để tránh tổn hại ổ cứng)
+    if count_times_for_storage_hist > max_times_for_storage_hist:
+        with open(hist_num_path, "w") as file:
+            # loop for skip number phone is not working
+            while True:
+                random_phone = random.choice(list_sum_of_phone)
+                r = requests.get(f"https://receive-smss.com/sms/{phone_number}/", headers=ua)
+                if r.status_code != 404:
+                    file.write(random_phone)
+                    count_times_for_storage_hist = 1
+                    break
+                else:
+                    continue
+
+    count_times_for_storage_hist += 1
     return phone_number
 
 
+# get all of message currently have of phone number
 def get_all_messages(phone_number):
     phone_number = phone_number.replace("+", "")
     try:
         r = requests.get(f"https://receive-smss.com/sms/{phone_number}/", headers=ua)
         all_messages = []
+        # processing raw data and get needed info (messages)
         for message in r.text.split("<label>Message</label><br><span>")[1:-1]:
             message = BeautifulSoup(message, "html.parser")
             message = message.text
@@ -48,12 +84,14 @@ def get_all_messages(phone_number):
 
 
 
-def check_cloudsigma_used():
-    phone_number = get_phone_number()
+# check whether this phone have any messages from cloudsigma service or not
+def check_cloudsigma_used(hist_num_path: str = "./cloudsigma_sms/phone_hist.txt"):
+    phone_number = get_phone_number(hist_num_path)
     if "error" in phone_number:
         return phone_number
     all_messages = get_all_messages(phone_number)
     
+    # loop for find and check message from cloudsigma
     for message in all_messages:
         if message[:15] == "Your CloudSigma":
             phone_message = message.split("Sender")[0]
@@ -63,14 +101,17 @@ def check_cloudsigma_used():
 
 
 
+# check and listen latest message come from cloudsigma
 def listen_new_message(phone_number):
     phone_number = phone_number.replace("+", "")
     times_count = 1
+    # loop for listening
     while True:
         try:
             r = requests.get(f"https://receive-smss.com/sms/{phone_number}/", headers=ua)
             print(colorama.Fore.YELLOW + f"\r{times_count}s" + colorama.Style.RESET_ALL, end=" ")
             print(colorama.Fore.BLUE + f"đang chờ đợi tin nhắn mới từ -> +{phone_number}" + colorama.Style.RESET_ALL, end="")
+            # loop for find and check latest message from range (1 - 2 msg)
             for message in r.text.split("<label>Message</label><br><span>")[1:3]:
                 message = BeautifulSoup(message, "html.parser").text
                 if message[:15] == "Your CloudSigma":
@@ -83,6 +124,10 @@ def listen_new_message(phone_number):
             continue
 
 
+
+# normally the sms online websites haven't any way for check uptime of their phone number
+# so i using creative way, that is check uptime of url (only working when phone numbers have in url)
+# using api of wayback machine for check uptime url appeer from internet
 def check_uptime_of_phone(phone_number, min_month=2):
     headers = {
         "authority": "web.archive.org",
@@ -123,8 +168,8 @@ def check_uptime_of_phone(phone_number, min_month=2):
     
 
 
-def check_phone_log(phone_number):
-    with open("./cloudsigma_sms/phone_log.txt", "r") as file:
+def check_phone_log(phone_number, phone_log="./cloudsigma_sms/phone_log.txt"):
+    with open(phone_log, "r") as file:
         ds_sdt_log = file.read().splitlines()
     if f"+{phone_number}" in ds_sdt_log:
         return {"na": f"sdt -> +{phone_number} đã tồn tại trong log"}
@@ -133,9 +178,16 @@ def check_phone_log(phone_number):
 
 
 
-def find(nt=20):
-    def _thread():
-        check_clsm_used = check_cloudsigma_used()
+def find(nt=20,
+        hist_num_path: str = "./cloudsigma_sms/phone_hist.txt",
+        phone_log: str = "./cloudsigma_sms/phone_log.txt",
+        phone_saved="./cloudsigma_sms/phone_saved.txt"
+    ):
+    def _thread(hist_num_path: str = "./cloudsigma_sms/phone_hist.txt",
+                phone_log: str = "./cloudsigma_sms/phone_log.txt",
+                phone_saved="./cloudsigma_sms/phone_saved.txt"
+            ):
+        check_clsm_used = check_cloudsigma_used(hist_num_path)
 
         if "error" in check_clsm_used:
             print(colorama.Fore.RED + check_clsm_used['error'] + colorama.Style.RESET_ALL)
@@ -152,7 +204,7 @@ def find(nt=20):
         elif "good" in check_uptime:
             print(colorama.Fore.GREEN + check_uptime['message'] + colorama.Style.RESET_ALL)
 
-        check_log = check_phone_log(check_clsm_used['phone_number'])
+        check_log = check_phone_log(check_clsm_used['phone_number'], phone_log)
 
         if "na" in check_log:
             print(colorama.Fore.RED + check_log['na'] + colorama.Style.RESET_ALL)
@@ -161,18 +213,18 @@ def find(nt=20):
 
         if not check_clsm_used['used'] and "good" in check_uptime and "good" in check_log:
             try:
-                with open("./cloudsigma_sms/phone_saved.txt", "a") as file:
+                with open(phone_saved, "a") as file:
                     file.write(f"+{check_clsm_used['phone_number']}\n")
-                    print(colorama.Fore.GREEN + f"đã lưu thành công số -> {check_clsm_used['phone_number']}" + colorama.Style.RESET_ALL)
-                with open("./cloudsigma_sms/phone_log.txt", "a") as file:
+                    print(colorama.Fore.GREEN + f"[*] đã thu thập thành công số -> {check_clsm_used['phone_number']}" + colorama.Style.RESET_ALL)
+                with open(phone_log, "a") as file:
                     file.write(f"+{check_clsm_used['phone_number']}\n")
-                    print(colorama.Fore.GREEN + f"đã lưu thành công số -> {check_clsm_used['phone_number']} vào log" + colorama.Style.RESET_ALL)
+                    print(colorama.Fore.GREEN + f"[*] đã lưu thành công số -> {check_clsm_used['phone_number']} vào log" + colorama.Style.RESET_ALL)
             except:
-                print(colorama.Fore.RED + "đã có lỗi khi lưu sdt hơp lệ" + colorama.Style.RESET_ALL)
+                print(colorama.Fore.RED + "[!] đã có lỗi khi lưu sdt hơp lệ" + colorama.Style.RESET_ALL)
     
     threads = []
     for _ in range(nt):
-        thread = threading.Thread(target=_thread)
+        thread = threading.Thread(target=_thread, args=(hist_num_path, phone_log, phone_saved))
         threads.append(thread)
         thread.start()
         time.sleep(0.5)
@@ -180,7 +232,10 @@ def find(nt=20):
         thread.join()
 
 
-def find_valid_phone():
+def find_valid_phone(hist_num_path: str = "./cloudsigma_sms/phone_hist.txt",
+                    phone_log: str = "./cloudsigma_sms/phone_log.txt",
+                    phone_saved: str = "./cloudsigma_sms/phone_saved.txt"
+        ):
     while True:
         nt_input = input(colorama.Fore.YELLOW + "[?] nhập số luồng\n-> " + colorama.Style.RESET_ALL)
         try:
@@ -192,7 +247,7 @@ def find_valid_phone():
     print(colorama.Fore.YELLOW + "[!] Dùng CTRL + C nếu muốn thoát khỏi chương trình smsonl" + colorama.Style.RESET_ALL)
     while True:
         try:
-            find(nt_input)
+            find(nt_input, hist_num_path, phone_log, phone_saved)
         except Exception as e:
             print(colorama.Fore.RED + f"đã có lỗi không xác định, mã lỗi {e}" + colorama.Style.RESET_ALL)
         except KeyboardInterrupt:
@@ -272,7 +327,10 @@ def delete_hist_phone_number():
         return 0
 
 
-def __UI():
+def __UI(hist_num_path: str = "./cloudsigma_sms/phone_hist.txt",
+        phone_log: str = "./cloudsigma_sms/phone_log.txt",
+        phone_saved: str = "./cloudsigma_sms/phone_saved.txt"
+    ):
     count = 0
     while True:
         if count > 0:
@@ -307,4 +365,7 @@ def __UI():
 
 
 if __name__ == "__main__":
-    __UI()
+    hist_num_path: str = "./cloudsigma_sms/phone_hist.txt",
+    phone_log: str = "./cloudsigma_sms/phone_log.txt",
+    phone_saved: str = "./cloudsigma_sms/phone_saved.txt"
+    __UI(hist_num_path, phone_log, phone_saved)
