@@ -222,14 +222,21 @@ def find(nt=20,
             except:
                 print(colorama.Fore.RED + "[!] đã có lỗi khi lưu sdt hơp lệ" + colorama.Style.RESET_ALL)
     
+    stop_event = threading.Event()
     threads = []
     for _ in range(nt):
         thread = threading.Thread(target=_thread, args=(hist_num_path, phone_log, phone_saved))
         threads.append(thread)
         thread.start()
         time.sleep(0.5)
+    print(colorama.Fore.GREEN + f"đã hoàn thành {nt} luồng" + colorama.Style.RESET_ALL)
     for thread in threads:
-        thread.join()
+        thread.join(timeout=2)
+    print(colorama.Fore.GREEN + f"đang dừng các luồng bị treo..." + colorama.Style.RESET_ALL)
+    for thread in threads:
+        if thread.is_alive():
+            stop_event.set()
+            thread.join(timeout=2)
 
 
 def find_valid_phone(hist_num_path: str = "./cloudsigma_sms/phone_hist.txt",
